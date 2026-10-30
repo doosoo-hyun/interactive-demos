@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brushed DC 모터 vs BLDC 모터 비교 시뮬레이터</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: #ffffff;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+        }
+        h1 {
+            text-align: center;
+            font-size: 1.5rem;
+            margin-bottom: 25px;
+            color: #1e293b;
+        }
+        .motor-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 768px) {
+            .motor-grid { grid-template-columns: 1fr; }
+        }
+        .motor-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 20px 15px 15px 15px;
+            background: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .motor-card h2 {
+            font-size: 1.2rem;
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #1e293b;
+            text-align: center;
+        }
+        svg {
+            width: 100%;
+            max-width: 400px;
+            height: auto;
+            background-color: #ffffff;
+        }
+        .controls-panel {
+            margin-top: 25px;
+            padding: 15px 20px;
+            background: #f1f5f9;
+            border-radius: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: space-around;
+            align-items: center;
+        }
+        .btn {
+            background-color: #0284c7;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn:hover { background-color: #0369a1; }
+        .btn-secondary { background-color: #64748b; }
+        .btn-secondary:hover { background-color: #475569; }
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        .desc-box {
+            margin-top: 15px;
+            padding: 12px 14px;
+            background: #f8fafc;
+            border-left: 4px solid #0284c7;
+            font-size: 0.88rem;
+            line-height: 1.5;
+            color: #334155;
+            width: 100%;
+            word-break: keep-all;
+        }
+        .nowrap-math {
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Brushed DC 모터 vs BLDC 모터 동작 원리 비교</h1>
+
+    <div class="motor-grid">
+        <!-- 1. Brushed DC Motor -->
+        <div class="motor-card">
+            <h2>1. Brushed DC Motor</h2>
+            <svg viewBox="0 0 400 390">
+                <rect x="20" y="20" width="360" height="320" rx="10" fill="none" stroke="#1e293b" stroke-width="4"/>
+
+                <!-- 고정자 N극 (좌측 - 빨간색) -->
+                <path d="M 30 30 L 130 30 C 90 90, 90 270, 130 330 L 30 330 Z" fill="#ef4444" stroke="#1e293b" stroke-width="2"/>
+                <text x="65" y="180" fill="#ffffff" font-size="28" font-weight="bold">N</text>
+
+                <!-- 고정자 S극 (우측 - 파란색) -->
+                <path d="M 370 30 L 270 30 C 310 90, 310 270, 270 330 L 370 330 Z" fill="#3b82f6" stroke="#1e293b" stroke-width="2"/>
+                <text x="315" y="180" fill="#ffffff" font-size="28" font-weight="bold">S</text>
+
+                <!-- 회전하는 로터 그룹 -->
+                <g id="dcRotorGroup" transform="translate(200, 180)">
+                    <g transform="rotate(0)">
+                        <path d="M 0 -15 L 60 -15 C 75 -25, 75 25, 60 15 L 0 15 Z" fill="#94a3b8" stroke="#1e293b" stroke-width="2"/>
+                        <path id="dcTip0" d="M 55 -22 C 82 -25, 82 25, 55 22 C 68 12, 68 -12, 55 -22 Z" fill="#94a3b8" stroke="#1e293b" stroke-width="1.5"/>
+                        <text id="dcText0" x="63" y="5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">OFF</text>
+                    </g>
+
+                    <g transform="rotate(120)">
+                        <path d="M 0 -15 L 60 -15 C 75 -25, 75 25, 60 15 L 0 15 Z" fill="#94a3b8" stroke="#1e293b" stroke-width="2"/>
+                        <path id="dcTip1" d="M 55 -22 C 82 -25, 82 25, 55 22 C 68 12, 68 -12, 55 -22 Z" fill="#94a3b8" stroke="#1e293b" stroke-width="1.5"/>
+                        <text id="dcText1" x="63" y="5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">OFF</text>
+                    </g>
+
+                    <g transform="rotate(240)">
+                        <path d="M 0 -15 L 60 -15 C 75 -25, 75 25, 60 15 L 0 15 Z" fill="#94a3b8" stroke="#1e293b" stroke-width="2"/>
+                        <path id="dcTip2" d="M 55 -22 C 82 -25, 82 25, 55 22 C 68 12, 68 -12, 55 -22 Z" fill="#94a3b8" stroke="#1e293b" stroke-width="1.5"/>
+                        <text id="dcText2" x="63" y="5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">OFF</text>
+                    </g>
+
+                    <!-- 3분할 정류자 링 -->
+                    <circle cx="0" cy="0" r="32" fill="#ffffff" stroke="#1e293b" stroke-width="1.5"/>
+                    <path d="M 31.5 0 A 31.5 31.5 0 0 1 -5.5 31.0" fill="none" stroke="#15803d" stroke-width="7"/>
+                    <path d="M -15.7 27.2 A 31.5 31.5 0 0 1 -24.1 -20.2" fill="none" stroke="#15803d" stroke-width="7"/>
+                    <path d="M -15.7 -27.2 A 31.5 31.5 0 0 1 29.6 -10.8" fill="none" stroke="#15803d" stroke-width="7"/>
+
+                    <circle cx="0" cy="0" r="8" fill="#475569"/>
+                </g>
+
+                <!-- 'ㄱ'자 황동 브러시 도선 (좌측 Brush +, 우측 Brush -) -->
+                <path d="M 168 180 L 140 180 L 140 330" fill="none" stroke="#eab308" stroke-width="10" stroke-linecap="square" stroke-linejoin="round"/>
+                <path d="M 168 180 L 140 180 L 140 330" fill="none" stroke="#1e293b" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="round"/>
+
+                <path d="M 232 180 L 260 180 L 260 330" fill="none" stroke="#eab308" stroke-width="10" stroke-linecap="square" stroke-linejoin="round"/>
+                <path d="M 232 180 L 260 180 L 260 330" fill="none" stroke="#1e293b" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="round"/>
+
+                <text x="110" y="360" fill="#1e293b" font-size="13" font-weight="bold">Brush (+)</text>
+                <text x="230" y="360" fill="#1e293b" font-size="13" font-weight="bold">Brush (-)</text>
+            </svg>
+            <div class="desc-box">
+                <strong>Brushed DC 모터 구동 원리:</strong><br>
+                고정자 자계 내에 놓인 회전자 권선에 직류 전류가 흐르면 전자기력<span class="nowrap-math">(<i>F</i> = <i>B I L</i>)</span>에 의해 회전 토크가 발생합니다. 회전 시 기계식 브러시와 정류자가 전류 방향을 계속 반전시켜 한 방향으로의 연속적인 회전을 유지합니다.
+            </div>
+        </div>
+
+        <!-- 2. BLDC Motor -->
+        <div class="motor-card">
+            <h2>2. BLDC Motor</h2>
+            <svg viewBox="0 0 400 390">
+                <text x="200" y="18" fill="#1e293b" font-size="15" font-weight="bold" text-anchor="middle">U상</text>
+                <text x="20" y="260" fill="#1e293b" font-size="15" font-weight="bold">V상</text>
+                <text x="350" y="260" fill="#1e293b" font-size="15" font-weight="bold">W상</text>
+
+                <!-- 고정자 하우징 및 공극 -->
+                <circle cx="200" cy="180" r="150" fill="none" stroke="#1e293b" stroke-width="4"/>
+                <circle cx="200" cy="180" r="120" fill="none" stroke="#64748b" stroke-width="2" stroke-dasharray="4,4"/>
+
+                <!-- 3상 방사형 고정자 코어 -->
+                <g id="statorU" transform="translate(200, 180) rotate(0) translate(0, -95)">
+                    <rect x="-18" y="-22" width="36" height="44" rx="4" fill="#94a3b8" stroke="#1e293b" stroke-width="2"/>
+                    <rect id="uTop" x="-16" y="-20" width="32" height="20" fill="#94a3b8"/>
+                    <rect id="uBot" x="-16" y="0" width="32" height="20" fill="#94a3b8"/>
+                    <text id="tUTop" x="0" y="-5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">OFF</text>
+                    <text id="tUBot" x="0" y="14" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">OFF</text>
+                </g>
+
+                <g id="statorV" transform="translate(200, 180) rotate(-120) translate(0, -95)">
+                    <rect x="-18" y="-22" width="36" height="44" rx="4" fill="#94a3b8" stroke="#1e293b" stroke-width="2"/>
+                    <rect id="vTop" x="-16" y="-20" width="32" height="20" fill="#94a3b8"/>
+                    <rect id="vBot" x="-16" y="0" width="32" height="20" fill="#94a3b8"/>
+                    <text id="tVTop" x="0" y="-5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">OFF</text>
+                    <text id="tVBot" x="0" y="14" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">OFF</text>
+                </g>
+
+                <g id="statorW" transform="translate(200, 180) rotate(120) translate(0, -95)">
+                    <rect x="-18" y="-22" width="36" height="44" rx="4" fill="#94a3b8" stroke="#1e293b" stroke-width="2"/>
+                    <rect id="wTop" x="-16" y="-20" width="32" height="20" fill="#94a3b8"/>
+                    <rect id="wBot" x="-16" y="0" width="32" height="20" fill="#94a3b8"/>
+                    <text id="tWTop" x="0" y="-5" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">OFF</text>
+                    <text id="tWBot" x="0" y="14" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">OFF</text>
+                </g>
+
+                <!-- 회전 영구자석 로터 -->
+                <g id="bldcRotorGroup" transform="translate(200, 180)">
+                    <path d="M -45 0 A 45 45 0 0 1 45 0 Z" fill="#ef4444" stroke="#1e293b" stroke-width="2"/>
+                    <text x="0" y="-18" fill="#ffffff" font-size="18" font-weight="bold" text-anchor="middle">N</text>
+
+                    <path d="M -45 0 A 45 45 0 0 0 45 0 Z" fill="#3b82f6" stroke="#1e293b" stroke-width="2"/>
+                    <text x="0" y="26" fill="#ffffff" font-size="18" font-weight="bold" text-anchor="middle">S</text>
+
+                    <circle cx="0" cy="0" r="10" fill="#94a3b8" stroke="#1e293b" stroke-width="2"/>
+                </g>
+            </svg>
+            <div class="desc-box">
+                <strong>BLDC 모터 구동 원리:</strong><br>
+                기계식 브러시 대신 반도체 인버터가 3상 고정자 권선(U, V, W)을 순차적으로 여자하여 회전 자계를 형성합니다. 영구자석 회전자는 고정자 자계와의 자기적 인력 및 척력에 의해 공극을 통해 연속적인 토크를 얻어 회전합니다.
+            </div>
+        </div>
+    </div>
+
+    <!-- 제어 콘솔 -->
+    <div class="controls-panel">
+        <button id="playBtn" class="btn" onclick="togglePlay()">일시정지</button>
+        <button class="btn btn-secondary" onclick="stepNext()">다음 스텝 (Step+1)</button>
+        
+        <div class="slider-group">
+            <label for="speedSlider">회전 속도: </label>
+            <input type="range" id="speedSlider" min="1" max="10" value="4" oninput="updateSpeed()">
+        </div>
+    </div>
+</div>
+
+<script>
+    var isPlaying = true;
+    var angle = 0;
+    var speed = 1.2;
+
+    function updateDcMotor(rotAngle) {
+        var group = document.getElementById('dcRotorGroup');
+        group.setAttribute('transform', 'translate(200, 180) rotate(' + rotAngle + ')');
+
+        var arms = [0, 120, 240];
+        arms.forEach(function(baseAngle, idx) {
+            var normAngle = (rotAngle + baseAngle) % 360;
+            if (normAngle < 0) normAngle += 360;
+
+            var tip = document.getElementById('dcTip' + idx);
+            var text = document.getElementById('dcText' + idx);
+
+            if ((normAngle >= 60 && normAngle <= 120) || (normAngle >= 240 && normAngle <= 300)) {
+                tip.setAttribute('fill', '#94a3b8');
+                text.textContent = 'OFF';
+            } else if (normAngle > 120 && normAngle < 240) {
+                tip.setAttribute('fill', '#3b82f6');
+                text.textContent = 'S';
+            } else {
+                tip.setAttribute('fill', '#ef4444');
+                text.textContent = 'N';
+            }
+        });
+    }
+
+    function setCoilPolarity(topEl, botEl, tTop, tBot, state) {
+        if (state === 'N_IN') { // 안쪽(botEl)이 N극(Red), 바깥쪽(topEl)이 S극(Blue)
+            topEl.setAttribute('fill', '#3b82f6'); tTop.textContent = 'S';
+            botEl.setAttribute('fill', '#ef4444'); tBot.textContent = 'N';
+        } else if (state === 'S_IN') { // 안쪽(botEl)이 S극(Blue), 바깥쪽(topEl)이 N극(Red)
+            topEl.setAttribute('fill', '#ef4444'); tTop.textContent = 'N';
+            botEl.setAttribute('fill', '#3b82f6'); tBot.textContent = 'S';
+        } else {
+            topEl.setAttribute('fill', '#94a3b8'); tTop.textContent = 'OFF';
+            botEl.setAttribute('fill', '#94a3b8'); tBot.textContent = 'OFF';
+        }
+    }
+
+    // 시계 방향(CW) 진행 시 전방 $60^\circ$ 사전 인력 여자(Attraction) 동기화
+    function updateBldcMotor(rotAngle) {
+        var group = document.getElementById('bldcRotorGroup');
+        group.setAttribute('transform', 'translate(200, 180) rotate(' + rotAngle + ')');
+
+        // 60도 단위로 정확히 스텝 분할 (rotAngle 범위: 0~360도)
+        var normAngle = (rotAngle % 360 + 360) % 360;
+        var step = Math.floor(normAngle / 60);
+
+        var uT = document.getElementById('uTop'), uB = document.getElementById('uBot'), tuT = document.getElementById('tUTop'), tuB = document.getElementById('tUBot');
+        var vT = document.getElementById('vTop'), vB = document.getElementById('vBot'), tvT = document.getElementById('tVTop'), tvB = document.getElementById('tVBot');
+        var wT = document.getElementById('wTop'), wB = document.getElementById('wBot'), twT = document.getElementById('tWTop'), twB = document.getElementById('tWBot');
+
+        switch (step) {
+            case 0: // 로터 N극 0°~60° (12시->2시): 다가가는 W상(120°) 안쪽 S극, 로터 S극 다가가는 V상(240°) 안쪽 N극, U상(0°) OFF
+            case 1: // 로터 N극 60°~120° (2시->4시 직전): W상 안쪽 S극 유지하여 끌어당김
+                setCoilPolarity(uT, uB, tuT, tuB, 'OFF');
+                setCoilPolarity(wT, wB, twT, twB, 'S_IN');
+                setCoilPolarity(vT, vB, tvT, tvB, 'N_IN');
+                break;
+
+            case 2: // 로터 N극 120°~180° (W상 통과 후 6시 진행): 다가가는 V상(240°) 안쪽 S극, U상(0°) 안쪽 N극, W상(120°) OFF
+            case 3: // 로터 N극 180°~240° (6시->8시 직전): V상 안쪽 S극 유지하여 끌어당김
+                setCoilPolarity(wT, wB, twT, twB, 'OFF');
+                setCoilPolarity(vT, vB, tvT, tvB, 'S_IN');
+                setCoilPolarity(uT, uB, tuT, tuB, 'N_IN');
+                break;
+
+            case 4: // 로터 N극 240°~300° (V상 통과 후 10시 진행): 다가가는 U상(0°) 안쪽 S극, W상(120°) 안쪽 N극, V상(240°) OFF
+            case 5: // 로터 N극 300°~360° (10시->12시 직전): U상 안쪽 S극 유지하여 끌어당김
+                setCoilPolarity(vT, vB, tvT, tvB, 'OFF');
+                setCoilPolarity(uT, uB, tuT, tuB, 'S_IN');
+                setCoilPolarity(wT, wB, twT, twB, 'N_IN');
+                break;
+        }
+    }
+
+    function animate() {
+        if (isPlaying) {
+            angle = (angle + speed) % 360;
+            updateDcMotor(angle);
+            updateBldcMotor(angle);
+        }
+        requestAnimationFrame(animate);
+    }
+
+    function togglePlay() {
+        isPlaying = !isPlaying;
+        document.getElementById('playBtn').textContent = isPlaying ? '일시정지' : '재생';
+    }
+
+    function stepNext() {
+        isPlaying = false;
+        document.getElementById('playBtn').textContent = '재생';
+        angle = (angle + 30) % 360;
+        updateDcMotor(angle);
+        updateBldcMotor(angle);
+    }
+
+    function updateSpeed() {
+        var val = document.getElementById('speedSlider').value;
+        speed = val * 0.3;
+    }
+
+    animate();
+</script>
+
+</body>
+</html>
