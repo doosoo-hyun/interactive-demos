@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3상 정현파 구동 동기전동기 (PMSM) 시뮬레이션</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: #ffffff;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+        }
+        h1 {
+            text-align: center;
+            font-size: 1.5rem;
+            margin-bottom: 25px;
+            color: #1e293b;
+        }
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 768px) {
+            .main-grid { grid-template-columns: 1fr; }
+        }
+        .card {
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 20px 15px 15px 15px;
+            background: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 420px;
+        }
+        .card h2 {
+            font-size: 1.15rem;
+            margin-top: 0;
+            margin-bottom: 10px;
+            color: #1e293b;
+            text-align: center;
+        }
+        svg {
+            width: 100%;
+            max-width: 400px;
+            height: auto;
+            background-color: #ffffff;
+            margin: auto 0;
+        }
+        canvas {
+            width: 100%;
+            max-width: 400px;
+            height: 220px;
+            background-color: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            margin: auto 0;
+        }
+        .controls-panel {
+            margin-top: 25px;
+            padding: 15px 20px;
+            background: #f1f5f9;
+            border-radius: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: space-around;
+            align-items: center;
+        }
+        .btn {
+            background-color: #0284c7;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn:hover { background-color: #0369a1; }
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        .desc-box {
+            margin-top: 20px;
+            padding: 14px;
+            background: #f8fafc;
+            border-left: 4px solid #0284c7;
+            font-size: 0.88rem;
+            line-height: 1.55;
+            color: #334155;
+            word-break: keep-all;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>3상 정현파 구동 동기전동기 (PMSM) 원리</h1>
+
+    <div class="main-grid">
+        <!-- 1. 동기전동기의 회전자계 -->
+        <div class="card">
+            <h2>동기전동기의 회전자계</h2>
+            <svg viewBox="0 0 400 380">
+                <!-- 상 명칭 레이블 -->
+                <text x="200" y="22" fill="#1e293b" font-size="15" font-weight="bold" text-anchor="middle">U상</text>
+                <text x="350" y="270" fill="#1e293b" font-size="15" font-weight="bold">V상</text>
+                <text x="20" y="270" fill="#1e293b" font-size="15" font-weight="bold">W상</text>
+
+                <!-- 고정자 외경 및 공극 -->
+                <circle cx="200" cy="180" r="150" fill="none" stroke="#1e293b" stroke-width="4"/>
+                <circle cx="200" cy="180" r="118" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,4"/>
+
+                <!-- 3상 고정자 슬롯 -->
+                <!-- U상 (0도) -->
+                <g transform="translate(200, 180) rotate(0) translate(0, -95)">
+                    <rect x="-18" y="-20" width="36" height="20" id="uOuter" fill="#cbd5e1" stroke="#1e293b" stroke-width="1.5"/>
+                    <rect x="-18" y="0" width="36" height="20" id="uInner" fill="#cbd5e1" stroke="#1e293b" stroke-width="1.5"/>
+                    <text x="0" y="-10" fill="#ffffff" font-size="12" font-weight="bold" text-anchor="middle" dominant-baseline="central" id="tUOuter">S</text>
+                    <text x="0" y="10" fill="#ffffff" font-size="12" font-weight="bold" text-anchor="middle" dominant-baseline="central" id="tUInner">N</text>
+                </g>
+
+                <!-- V상 (120도) -->
+                <g transform="translate(200, 180) rotate(120) translate(0, -95)">
+                    <rect x="-18" y="-20" width="36" height="20" id="vOuter" fill="#cbd5e1" stroke="#1e293b" stroke-width="1.5"/>
+                    <rect x="-18" y="0" width="36" height="20" id="vInner" fill="#cbd5e1" stroke="#1e293b" stroke-width="1.5"/>
+                    <text x="0" y="-10" fill="#ffffff" font-size="12" font-weight="bold" text-anchor="middle" dominant-baseline="central" transform="rotate(-120, 0, -10)" id="tVOuter">N</text>
+                    <text x="0" y="10" fill="#ffffff" font-size="12" font-weight="bold" text-anchor="middle" dominant-baseline="central" transform="rotate(-120, 0, 10)" id="tVInner">S</text>
+                </g>
+
+                <!-- W상 (240도) -->
+                <g transform="translate(200, 180) rotate(240) translate(0, -95)">
+                    <rect x="-18" y="-20" width="36" height="20" id="wOuter" fill="#cbd5e1" stroke="#1e293b" stroke-width="1.5"/>
+                    <rect x="-18" y="0" width="36" height="20" id="wInner" fill="#cbd5e1" stroke="#1e293b" stroke-width="1.5"/>
+                    <text x="0" y="-10" fill="#ffffff" font-size="12" font-weight="bold" text-anchor="middle" dominant-baseline="central" transform="rotate(-240, 0, -10)" id="tWOuter">N</text>
+                    <text x="0" y="10" fill="#ffffff" font-size="12" font-weight="bold" text-anchor="middle" dominant-baseline="central" transform="rotate(-240, 0, 10)" id="tWInner">S</text>
+                </g>
+
+                <!-- 고정자 합성 회전자계 화살표 -->
+                <g id="statorFieldGroup">
+                    <line id="statorNLine" x1="200" y1="65" x2="200" y2="120" stroke="#ef4444" stroke-width="4" marker-end="url(#arrowN)"/>
+                    <line id="statorSLine" x1="200" y1="240" x2="200" y2="295" stroke="#3b82f6" stroke-width="4" marker-end="url(#arrowS)"/>
+                </g>
+                
+                <defs>
+                    <marker id="arrowN" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444"/>
+                    </marker>
+                    <marker id="arrowS" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6"/>
+                    </marker>
+                </defs>
+
+                <!-- 영구자석 회전자 (Rotor) -->
+                <g id="pmsmRotor" transform="translate(200, 180)">
+                    <path d="M -45 0 A 45 45 0 0 1 45 0 Z" fill="#ef4444" stroke="#1e293b" stroke-width="2"/>
+                    <text x="0" y="-18" fill="#ffffff" font-size="18" font-weight="bold" text-anchor="middle">N</text>
+
+                    <path d="M -45 0 A 45 45 0 0 0 45 0 Z" fill="#3b82f6" stroke="#1e293b" stroke-width="2"/>
+                    <text x="0" y="26" fill="#ffffff" font-size="18" font-weight="bold" text-anchor="middle">S</text>
+
+                    <circle cx="0" cy="0" r="10" fill="#94a3b8" stroke="#1e293b" stroke-width="2"/>
+                </g>
+            </svg>
+        </div>
+
+        <!-- 2. 3상 정현파 전류 파형 -->
+        <div class="card">
+            <h2>3상 정현파 전류 파형</h2>
+            <canvas id="waveCanvas" width="400" height="220"></canvas>
+            <div style="margin-top: 15px; display: flex; gap: 20px; font-size: 0.9rem; font-weight: bold;">
+                <span style="color: #ef4444;">― U상</span>
+                <span style="color: #22c55e;">― V상</span>
+                <span style="color: #3b82f6;">― W상</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 제어 콘솔 -->
+    <div class="controls-panel">
+        <button id="playBtn" class="btn" onclick="togglePlay()">일시정지</button>
+        <div class="slider-group">
+            <label for="speedSlider">회전 속도(주파수): </label>
+            <input type="range" id="speedSlider" min="1" max="10" value="4" oninput="updateSpeed()">
+        </div>
+    </div>
+
+    <div class="desc-box">
+        <strong>동기전동기(PMSM) 구동 원리 및 정현파 구동의 특징:</strong><br>
+        3상 인버터에서 120° 위상 차가 나는 정현파 전류를 인가하면, 고정자 내부에는 일정한 크기로 원형 회전하는 회전자계(Rotating Magnetic Field)가 형성됩니다. 6스텝(BLDC) 구동이 60° 간격의 불연속 스위칭으로 자계를 전환했던 것과 달리, <strong>정현파 구동</strong>은 3상 전류의 정현적 변화를 통해 회전자계의 크기와 위상을 연속적으로 이동시킵니다. 영구자석 회전자는 이 회전자계와 자기적 인력(N-S 끌림)으로 결합하여 슬립(Slip) 없이 부드럽고 정밀한 동기 속도로 회전하게 됩니다.
+    </div>
+</div>
+
+<script>
+    let isPlaying = true;
+    let theta = Math.PI / 2; // 90도 (U상 최대 피크 지점)
+    let speed = 0.03;
+
+    const canvas = document.getElementById('waveCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function updatePMSM() {
+        const iu = Math.sin(theta);
+        const iv = Math.sin(theta - (2 * Math.PI / 3));
+        const iw = Math.sin(theta - (4 * Math.PI / 3));
+
+        updateStatorCoil('uOuter', 'uInner', 'tUOuter', 'tUInner', iu);
+        updateStatorCoil('vOuter', 'vInner', 'tVOuter', 'tVInner', iv);
+        updateStatorCoil('wOuter', 'wInner', 'tWOuter', 'tWInner', iw);
+
+        // 자계 회전 방향 벡터
+        const angle = theta - Math.PI / 2;
+        const cx = 200;
+        const cy = 180;
+
+        const dx = Math.sin(angle);
+        const dy = Math.cos(angle);
+
+        // 빨간색 삼각형(N극 자속)
+        const rRedStart = 72;
+        const rRedEnd = 56;
+        const nx1 = cx + rRedStart * dx;
+        const ny1 = cy - rRedStart * dy;
+        const nx2 = cx + rRedEnd * dx;
+        const ny2 = cy - rRedEnd * dy;
+
+        const sNLine = document.getElementById('statorNLine');
+        if (sNLine) {
+            sNLine.setAttribute('x1', nx1); sNLine.setAttribute('y1', ny1);
+            sNLine.setAttribute('x2', nx2); sNLine.setAttribute('y2', ny2);
+        }
+
+        // 파란색 삼각형 (S극 자속)
+        const rBlueStart = 51;
+        const rBlueEnd = 65;
+        const sx1 = cx - rBlueStart * dx;
+        const sy1 = cy + rBlueStart * dy;
+        const sx2 = cx - rBlueEnd * dx;
+        const sy2 = cy + rBlueEnd * dy;
+
+        const sSLine = document.getElementById('statorSLine');
+        if (sSLine) {
+            sSLine.setAttribute('x1', sx1); sSLine.setAttribute('y1', sy1);
+            sSLine.setAttribute('x2', sx2); sSLine.setAttribute('y2', sy2);
+        }
+
+        // 영구자석 회전자 위치 정렬 (자기적 인력 결합 위상: N극 회전자계가 S극 영구자석을 마주보도록 +180도 보정)
+        const rotor = document.getElementById('pmsmRotor');
+        if (rotor) {
+            const rotDeg = (theta - Math.PI / 2) * (180 / Math.PI) + 180;
+            rotor.setAttribute('transform', `translate(${cx}, ${cy}) rotate(${rotDeg})`);
+        }
+    }
+
+    function updateStatorCoil(outerId, innerId, textOuterId, textInnerId, val) {
+        const outer = document.getElementById(outerId);
+        const inner = document.getElementById(innerId);
+        const tOuter = document.getElementById(textOuterId);
+        const tInner = document.getElementById(textInnerId);
+
+        const absVal = Math.min(Math.abs(val), 1.0);
+        
+        const redColor = `rgb(${Math.round(203 + (239 - 203) * absVal)}, ${Math.round(213 + (68 - 213) * absVal)}, ${Math.round(225 + (68 - 225) * absVal)})`;
+        const blueColor = `rgb(${Math.round(203 + (59 - 203) * absVal)}, ${Math.round(213 + (130 - 213) * absVal)}, ${Math.round(225 + (246 - 225) * absVal)})`;
+        const neutralColor = `#cbd5e1`;
+
+        if (val > 0.02) {
+            inner.setAttribute('fill', redColor);
+            outer.setAttribute('fill', blueColor);
+            tInner.textContent = 'N';
+            tOuter.textContent = 'S';
+            tInner.setAttribute('fill-opacity', absVal.toFixed(2));
+            tOuter.setAttribute('fill-opacity', absVal.toFixed(2));
+        } else if (val < -0.02) {
+            inner.setAttribute('fill', blueColor);
+            outer.setAttribute('fill', redColor);
+            tInner.textContent = 'S';
+            tOuter.textContent = 'N';
+            tInner.setAttribute('fill-opacity', absVal.toFixed(2));
+            tOuter.setAttribute('fill-opacity', absVal.toFixed(2));
+        } else {
+            inner.setAttribute('fill', neutralColor);
+            outer.setAttribute('fill', neutralColor);
+            tInner.textContent = '';
+            tOuter.textContent = '';
+        }
+    }
+
+    function drawWaveforms() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const w = canvas.width;
+        const h = canvas.height;
+        const centerY = h / 2;
+        const amp = 65;
+
+        // 기준선 (0A)
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(0, centerY);
+        ctx.lineTo(w, centerY);
+        ctx.stroke();
+
+        // 파형 그리기 (U, V, W)
+        const drawPhase = (phaseOffset, color) => {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            for (let x = 0; x < w; x++) {
+                const t = theta + (x - w / 2) * 0.025;
+                const y = centerY - amp * Math.sin(t - phaseOffset);
+                if (x === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        };
+
+        drawPhase(0, '#ef4444');                 // U상
+        drawPhase(2 * Math.PI / 3, '#22c55e');   // V상
+        drawPhase(4 * Math.PI / 3, '#3b82f6');   // W상
+
+        // 현재 시간 표시선
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(w / 2, 0);
+        ctx.lineTo(w / 2, h);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    function animate() {
+        if (isPlaying) {
+            theta += speed;
+        }
+        updatePMSM();
+        drawWaveforms();
+        requestAnimationFrame(animate);
+    }
+
+    function togglePlay() {
+        isPlaying = !isPlaying;
+        const btn = document.getElementById('playBtn');
+        btn.textContent = isPlaying ? '일시정지' : '재생';
+    }
+
+    function updateSpeed() {
+        const val = document.getElementById('speedSlider').value;
+        speed = val * 0.0075;
+    }
+
+    window.onload = () => {
+        animate();
+    };
+</script>
+</body>
+</html>
