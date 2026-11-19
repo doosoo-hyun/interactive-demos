@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLDC 모터 홀센서(Hall Sensor) 신호 및 6-Step 정류 시뮬레이터</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;800&display=swap');
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+            user-select: none;
+        }
+        .canvas-box {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        input[type="range"] {
+            accent-color: #0284c7;
+        }
+    </style>
+</head>
+<body class="p-3 md:p-5 min-h-screen flex flex-col items-center">
+
+    <div class="max-w-7xl w-full space-y-4">
+        <!-- 헤더 영역 -->
+        <header class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="px-2.5 py-0.5 bg-sky-100 text-sky-800 text-xs font-bold rounded-full">BLDC 정류 제어</span>
+                    <h1 class="text-xl md:text-2xl font-extrabold text-slate-900">BLDC 홀센서(H1, H2, H3) 신호 및 6-Step 인버터 구동</h1>
+                </div>
+                <p class="text-xs md:text-sm text-slate-500 mt-1">
+                    회전자 영구자석(N/S)의 회전에 따른 홀센서 H/L 신호 변화, 3비트 홀 코드(H1 H2 H3), 그리고 3상 인버터(T1~T6) 통전 경로를 실시간으로 확인합니다.
+                </p>
+            </div>
+
+            <!-- 현재 상태 요약 배지 -->
+            <div class="inline-flex items-center bg-slate-900 text-white px-3 py-2.5 rounded-xl shadow-inner shrink-0 self-start md:self-center">
+                <div class="text-center px-3 border-r border-slate-700">
+                    <div class="text-[10px] text-slate-400 whitespace-nowrap">회전자 위치(θ)</div>
+                    <div id="badgeAngle" class="text-base font-extrabold text-amber-400 font-mono whitespace-nowrap">30°</div>
+                </div>
+                <div class="text-center px-3 border-r border-slate-700">
+                    <div class="text-[10px] text-slate-400 whitespace-nowrap">홀 코드 (H1 H2 H3)</div>
+                    <div id="badgeHallBin" class="text-base font-extrabold text-emerald-400 font-mono whitespace-nowrap">101 (5)</div>
+                </div>
+                <div class="text-center px-3">
+                    <div class="text-[10px] text-slate-400 whitespace-nowrap">도통 스위치 / 전류</div>
+                    <div id="badgeSwitch" class="text-sm font-bold text-sky-300 font-mono whitespace-nowrap">T1, T6 (iₐ=+I, iᵦ=-I)</div>
+                </div>
+            </div>
+        </header>
+
+        <!-- 상단 메인 시각화: 좌측(인버터+모터 단면) & 우측(홀센서 타이밍 차트) -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+            
+            <!-- 1. 좌측 패널: 3상 인버터 회로 & 모터 단면도 (7칸) -->
+            <div class="lg:col-span-7 canvas-box p-3 flex flex-col">
+                <div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-2 shrink-0">
+                    <h2 class="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-sky-500"></span>
+                        3상 인버터 스위칭 회로 & 고정자/회전자 단면도
+                    </h2>
+                    <span class="text-[11px] text-slate-400 font-medium">* 모터 단면을 마우스로 드래그하여 직접 회전 가능</span>
+                </div>
+                <div class="w-full flex-1 flex items-center justify-center">
+                    <canvas id="topCanvas" class="w-full h-auto cursor-grab active:cursor-grabbing"></canvas>
+                </div>
+            </div>
+
+            <!-- 2. 우측 패널: H1, H2, H3 구형파 타이밍 차트 (5칸) -->
+            <div class="lg:col-span-5 canvas-box p-3 flex flex-col">
+                <div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-2 shrink-0">
+                    <h2 class="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
+                        회전자 위치별 홀센서 출력 파형 (H1, H2, H3)
+                    </h2>
+                    <span class="text-[11px] text-slate-400 font-medium">* 파형 클릭 시 해당 각도로 이동</span>
+                </div>
+                <div class="w-full flex-1 flex items-center justify-center">
+                    <canvas id="waveCanvas" class="w-full h-auto cursor-pointer"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- 하단 제어 콘솔 -->
+        <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-wrap items-center justify-between gap-4">
+            <!-- 재생 / 스텝 제어 -->
+            <div class="flex flex-wrap items-center gap-2">
+                <button id="playBtn" onclick="togglePlay()" class="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs md:text-sm font-bold rounded-lg shadow transition flex items-center gap-1.5">
+                    <span id="playIcon">▶</span>
+                    <span id="playText">자동 회전 시작</span>
+                </button>
+                <button onclick="stepAngle(-60)" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-lg border border-slate-300 transition">
+                    ◀ -60° (이전 스텝)
+                </button>
+                <button onclick="stepAngle(60)" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-lg border border-slate-300 transition">
+                    +60° (다음 스텝) ▶
+                </button>
+            </div>
+
+            <!-- 각도 직접 슬라이더 -->
+            <div class="flex-1 min-w-[220px] flex items-center gap-3 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
+                <label for="angleSlider" class="text-xs font-bold text-slate-700 whitespace-nowrap">회전자 위치(θ):</label>
+                <input type="range" id="angleSlider" min="0" max="360" step="1" value="30" class="w-full cursor-pointer" oninput="onSliderInput(this.value)">
+                <span id="sliderAngleVal" class="text-xs font-mono font-extrabold text-sky-700 w-10 text-right">30°</span>
+            </div>
+
+            <!-- 회전 속도 조절 -->
+            <div class="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
+                <label for="speedSlider" class="text-xs font-bold text-slate-700 whitespace-nowrap">회전 속도:</label>
+                <input type="range" id="speedSlider" min="1" max="10" value="3" class="w-24 cursor-pointer" oninput="updateSpeed(this.value)">
+            </div>
+        </div>
+    </div>
+
+<script>
+    // =========================================================================
+    // 1. 시뮬레이션 상태 변수 및 물리 모델 정의
+    // =========================================================================
+    // 초기 각도는 첫 번째 이미지와 동일한 30도(Step 1 시작점)로 설정
+    let rotorAngle = 30.0; 
+    let isPlaying = false;
+    let speed = 0.5;
+
+    const topCanvas = document.getElementById('topCanvas');
+    const topCtx = topCanvas.getContext('2d');
+    const waveCanvas = document.getElementById('waveCanvas');
+    const waveCtx = waveCanvas.getContext('2d');
+
+    // 회로도와 모터 단면 사이의 충분한 좌우 간격 확보
+    const TOP_W = 940;
+    const TOP_H = 415;
+    // 슬라이드(16:9) 캡처에 최적화된 16:9 와이드 비율 (768 x 432 = 16:9)
+    const WAVE_W = 768;
+    const WAVE_H = 432;
+    const MOTOR_CX = 740;
+    const MOTOR_CY = 218;
+
+    // 고해상도(HiDPI / Retina) 디스플레이 선명도 보정
+    function setupHiDPICanvas(canvas, ctx, logicalW, logicalH) {
+        const dpr = Math.max(window.devicePixelRatio || 1, 2);
+        canvas.width = logicalW * dpr;
+        canvas.height = logicalH * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+    }
+
+    setupHiDPICanvas(topCanvas, topCtx, TOP_W, TOP_H);
+    setupHiDPICanvas(waveCanvas, waveCtx, WAVE_W, WAVE_H);
+
+    window.addEventListener('resize', () => {
+        setupHiDPICanvas(topCanvas, topCtx, TOP_W, TOP_H);
+        setupHiDPICanvas(waveCanvas, waveCtx, WAVE_W, WAVE_H);
+        updateAll();
+    });
+
+    /**
+     * 주어진 회전자 각도(0° ~ 360°)에 대한 H1, H2, H3 상태 및 6-Step 스위칭 정보 반환
+     */
+    function getHallAndStepState(deg) {
+        const a = ((deg % 360) + 360) % 360;
+
+        // 슬라이드 2번 파형과 100% 일치하는 홀센서 H/L 판정
+        const h1 = (a >= 30 && a < 210) ? 1 : 0;      // H1 (B상): 30° ~ 210° High
+        const h2 = (a >= 150 && a < 330) ? 1 : 0;     // H2 (C상): 150° ~ 330° High
+        const h3 = (a < 90 || a >= 270) ? 1 : 0;      // H3 (A상): 0°~90°, 270°~360° High
+
+        const binStr = `${h1}${h2}${h3}`;
+        const decVal = (h1 << 2) | (h2 << 1) | h3;
+
+        // 6-Step 구간 매핑 (슬라이드 이미지 1번: 30°~90° 구간이 Step 1, T1 & T6 도통, ia=+I, ib=-I)
+        let stepInfo = {};
+        if (a >= 30 && a < 90) {
+            // Code 101 (5) -> Step 1
+            stepInfo = {
+                step: 1, highSw: 'T1', lowSw: 'T6',
+                ia: 1, ib: -1, ic: 0,
+                inPhase: 'a', outPhase: 'b',
+                statorNDir: 210
+            };
+        } else if (a >= 90 && a < 150) {
+            // Code 100 (4) -> Step 2
+            stepInfo = {
+                step: 2, highSw: 'T1', lowSw: 'T2',
+                ia: 1, ib: 0, ic: -1,
+                inPhase: 'a', outPhase: 'c',
+                statorNDir: 270
+            };
+        } else if (a >= 150 && a < 210) {
+            // Code 110 (6) -> Step 3
+            stepInfo = {
+                step: 3, highSw: 'T3', lowSw: 'T2',
+                ia: 0, ib: 1, ic: -1,
+                inPhase: 'b', outPhase: 'c',
+                statorNDir: 330
+            };
+        } else if (a >= 210 && a < 270) {
+            // Code 010 (2) -> Step 4
+            stepInfo = {
+                step: 4, highSw: 'T3', lowSw: 'T4',
+                ia: -1, ib: 1, ic: 0,
+                inPhase: 'b', outPhase: 'a',
+                statorNDir: 30
+            };
+        } else if (a >= 270 && a < 330) {
+            // Code 011 (3) -> Step 5
+            stepInfo = {
+                step: 5, highSw: 'T5', lowSw: 'T4',
+                ia: -1, ib: 0, ic: 1,
+                inPhase: 'c', outPhase: 'a',
+                statorNDir: 90
+            };
+        } else {
+            // 330° ~ 360°, 0° ~ 30°: Code 001 (1) -> Step 6
+            stepInfo = {
+                step: 6, highSw: 'T5', lowSw: 'T6',
+                ia: 0, ib: -1, ic: 1,
+                inPhase: 'c', outPhase: 'b',
+                statorNDir: 150
+            };
+        }
+
+        return { angle: a, h1, h2, h3, binStr, decVal, ...stepInfo };
+    }
+
+    /**
+     * 수식 변수 + 정식 아랫첨자(Subscript) 렌더링 헬퍼 함수
+     * 통일된 Times New Roman 수식 폰트 사용 (이탤릭 본문 + 정자체 아랫첨자)
+     */
+    function drawMathSubscript(ctx, baseText, subText, x, y, options = {}) {
+        const fontSize = options.fontSize || 16;
+        const subSize = Math.round(fontSize * 0.72);
+        const align = options.align || 'left';
+        const color = options.color || '#0f172a';
+        const baseItalic = options.baseItalic !== false;
+        const subItalic = options.subItalic === true;
+
+        ctx.save();
+        ctx.fillStyle = color;
+        ctx.textBaseline = 'alphabetic';
+
+        const baseFont = `${baseItalic ? 'italic ' : ''}bold ${fontSize}px "Times New Roman", Times, Georgia, serif`;
+        const subFont = `${subItalic ? 'italic ' : ''}bold ${subSize}px "Times New Roman", Times, Georgia, serif`;
+
+        ctx.font = baseFont;
+        const baseW = ctx.measureText(baseText).width;
+        ctx.font = subFont;
+        const subW = ctx.measureText(subText).width;
+        const totalW = baseW + subW + 0.5;
+
+        let startX = x;
+        if (align === 'center') startX = x - totalW / 2;
+        else if (align === 'right') startX = x - totalW;
+
+        ctx.textAlign = 'left';
+        ctx.font = baseFont;
+        ctx.fillText(baseText, startX, y);
+
+        ctx.font = subFont;
+        ctx.fillText(subText, startX + baseW + 0.5, y + Math.round(fontSize * 0.26));
+        ctx.restore();
+
+        return totalW;
+    }
+
+    function drawArrowHead(ctx, x, y, angleRad, size = 7) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angleRad);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-size * 1.3, -size * 0.65);
+        ctx.lineTo(-size * 0.9, 0);
+        ctx.lineTo(-size * 1.3, size * 0.65);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // =========================================================================
+    // 2. 좌측 캔버스 렌더링: 3상 인버터 + Y결선 + 모터 단면도
+    // =========================================================================
+    function drawTopCanvas(state) {
+        topCtx.clearRect(0, 0, TOP_W, TOP_H);
+
+        // 1) Step 1 ~ Step 6 배지 (좌측 상단 여백 배치)
+        topCtx.save();
+        topCtx.fillStyle = '#eff6ff';
+        topCtx.strokeStyle = '#2563eb';
+        topCtx.lineWidth = 1.6;
+        topCtx.beginPath();
+        topCtx.roundRect(14, 18, 72, 28, 6);
+        topCtx.fill();
+        topCtx.stroke();
+
+        topCtx.fillStyle = '#1e3a8a';
+        topCtx.font = 'bold 14px "Pretendard", sans-serif';
+        topCtx.textAlign = 'center';
+        topCtx.textBaseline = 'middle';
+        topCtx.fillText(`Step ${state.step}`, 50, 32);
+        topCtx.restore();
+
+        // 2) 3상 인버터 회로도 + Y결선 권선
+        drawInverterAndWindings(topCtx, state);
+
+        // 3) 우측 BLDC 모터 단면도 (충분한 좌우 간격 유지)
+        drawMotorCrossSection(topCtx, state);
+    }
+
+    function drawInverterAndWindings(ctx, state) {
+        const dcX = 72;
+        const topRailY = 72;
+        const botRailY = 308;
+        const midRailY = (topRailY + botRailY) / 2; // 모든 스위치 수직 정렬 기준선 (190)
+        const legXs = [142, 208, 274];
+        const outTapYs = [174, 190, 206]; // 출력선 분기 높이만 살짝 분리하여 교차 방지
+
+        ctx.save();
+
+        // 직류 전원 (Vdc)
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(dcX, 173);
+        ctx.lineTo(dcX, topRailY);
+        ctx.lineTo(legXs[2], topRailY);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(dcX, 207);
+        ctx.lineTo(dcX, botRailY);
+        ctx.lineTo(legXs[2], botRailY);
+        ctx.stroke();
+
+        // 배터리 심볼
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(dcX - 14, 173);
+        ctx.lineTo(dcX + 14, 173);
+        ctx.stroke();
+
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.moveTo(dcX - 8, 184);
+        ctx.lineTo(dcX + 8, 184);
+        ctx.stroke();
+
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(dcX - 14, 195);
+        ctx.lineTo(dcX + 14, 195);
+        ctx.stroke();
+
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.moveTo(dcX - 8, 207);
+        ctx.lineTo(dcX + 8, 207);
+        ctx.stroke();
+
+        // V_dc 수식 라벨
+        drawMathSubscript(ctx, 'V', 'dc', dcX - 20, 195, { fontSize: 16, align: 'right' });
+
+        // 상단 직류 전류 화살표 I
+        ctx.fillStyle = '#0f172a';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(92, 58);
+        ctx.lineTo(120, 58);
+        ctx.stroke();
+        drawArrowHead(ctx, 122, 58, 0, 5.5);
+        ctx.font = 'italic bold 16px "Times New Roman", Times, serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('I', 106, 50);
+
+        // 6개 스위치 (T1~T6) - 상단 3개 & 하단 3개 수직 높이 완벽 정렬
+        const switches = [
+            { id: 'T1', leg: 0, isTop: true,  y1: topRailY, y2: midRailY },
+            { id: 'T4', leg: 0, isTop: false, y1: midRailY, y2: botRailY },
+            { id: 'T3', leg: 1, isTop: true,  y1: topRailY, y2: midRailY },
+            { id: 'T6', leg: 1, isTop: false, y1: midRailY, y2: botRailY },
+            { id: 'T5', leg: 2, isTop: true,  y1: topRailY, y2: midRailY },
+            { id: 'T2', leg: 2, isTop: false, y1: midRailY, y2: botRailY }
+        ];
+
+        switches.forEach((sw) => {
+            const x = legXs[sw.leg];
+            const isClosed = (sw.id === state.highSw || sw.id === state.lowSw);
+            const activeColor = sw.isTop ? '#ef4444' : '#3b82f6'; // 상단 도통(+I)=빨강, 하단 도통(-I)=파랑
+            const swCenterY = (sw.y1 + sw.y2) / 2;
+            const swTop = swCenterY - 16;
+            const swBot = swCenterY + 16;
+
+            if (isClosed) {
+                ctx.save();
+                ctx.fillStyle = sw.isTop ? 'rgba(254, 202, 202, 0.5)' : 'rgba(191, 219, 254, 0.55)';
+                ctx.strokeStyle = activeColor;
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([4, 3]);
+                ctx.beginPath();
+                ctx.arc(x + 7, swCenterY, 23, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // 수직 배선
+            ctx.strokeStyle = isClosed ? activeColor : '#0f172a';
+            ctx.lineWidth = isClosed ? 2.4 : 1.6;
+            ctx.beginPath();
+            ctx.moveTo(x, sw.y1);
+            ctx.lineTo(x, swTop);
+            ctx.moveTo(x, swBot);
+            ctx.lineTo(x, sw.y2);
+            ctx.stroke();
+
+            // 접점 원
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = isClosed ? activeColor : '#0f172a';
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.arc(x, swTop, 2.8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(x, swBot, 2.8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // 스위치 블레이드
+            ctx.strokeStyle = isClosed ? activeColor : '#0f172a';
+            ctx.lineWidth = isClosed ? 2.8 : 2.0;
+            ctx.beginPath();
+            ctx.moveTo(x, swBot);
+            if (isClosed) {
+                ctx.lineTo(x, swTop);
+            } else {
+                ctx.lineTo(x - 15, swTop + 4);
+            }
+            ctx.stroke();
+
+            // 역병렬 다이오드
+            const dx = x + 15;
+            ctx.strokeStyle = '#475569';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(x, swTop - 6);
+            ctx.lineTo(dx, swTop - 6);
+            ctx.lineTo(dx, swBot + 6);
+            ctx.lineTo(x, swBot + 6);
+            ctx.stroke();
+
+            ctx.fillStyle = '#475569';
+            ctx.beginPath();
+            ctx.moveTo(dx, swCenterY - 4.5);
+            ctx.lineTo(dx - 4.5, swCenterY + 4.5);
+            ctx.lineTo(dx + 4.5, swCenterY + 4.5);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(dx - 4.5, swCenterY - 4.5);
+            ctx.lineTo(dx + 4.5, swCenterY - 4.5);
+            ctx.stroke();
+
+            // 스위치 이름 (T1~T6)
+            drawMathSubscript(ctx, 'T', sw.id.slice(1), x - 10, swCenterY + 4, {
+                fontSize: 13,
+                align: 'right',
+                color: isClosed ? activeColor : '#334155'
+            });
+        });
+
+        // 3상 Y결선 권선 (a, b, c) - 인버터에서 오른쪽으로 충분히 이격
+        const nx = 445;
+        const ny = 190;
+        const termA = { x: 445, y: 90 };
+        const termB = { x: 368, y: 264 };
+        const termC = { x: 522, y: 264 };
+
+        function getPhaseColor(cur) {
+            if (cur > 0) return '#ef4444'; // +I 유입: 빨간색
+            if (cur < 0) return '#3b82f6'; // -I 유출: 파란색
+            return '#475569';              // 비통전: 회색
+        }
+
+        // a상 출력 배선
+        ctx.strokeStyle = getPhaseColor(state.ia);
+        ctx.lineWidth = state.ia !== 0 ? 2.3 : 1.5;
+        ctx.beginPath();
+        ctx.moveTo(legXs[0], outTapYs[0]);
+        ctx.lineTo(342, outTapYs[0]);
+        ctx.lineTo(342, termA.y);
+        ctx.lineTo(termA.x, termA.y);
+        ctx.stroke();
+
+        // b상 출력 배선
+        ctx.strokeStyle = getPhaseColor(state.ib);
+        ctx.lineWidth = state.ib !== 0 ? 2.3 : 1.5;
+        ctx.beginPath();
+        ctx.moveTo(legXs[1], outTapYs[1]);
+        ctx.lineTo(328, outTapYs[1]);
+        ctx.lineTo(328, termB.y);
+        ctx.lineTo(termB.x, termB.y);
+        ctx.stroke();
+
+        // c상 출력 배선
+        ctx.strokeStyle = getPhaseColor(state.ic);
+        ctx.lineWidth = state.ic !== 0 ? 2.3 : 1.5;
+        ctx.beginPath();
+        ctx.moveTo(legXs[2], outTapYs[2]);
+        ctx.lineTo(314, outTapYs[2]);
+        ctx.lineTo(314, 326);
+        ctx.lineTo(522, 326);
+        ctx.lineTo(termC.x, termC.y);
+        ctx.stroke();
+
+        legXs.forEach((lx, i) => {
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath();
+            ctx.arc(lx, outTapYs[i], 3.4, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        function drawPhaseCoil(p1, p2, currentVal, label, labelOffset) {
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const len = Math.hypot(dx, dy);
+            const ang = Math.atan2(dy, dx);
+
+            ctx.save();
+            ctx.translate(p1.x, p1.y);
+            ctx.rotate(ang);
+
+            ctx.strokeStyle = getPhaseColor(currentVal);
+            ctx.lineWidth = currentVal !== 0 ? 2.6 : 1.7;
+
+            const leadLen = len * 0.24;
+            const coilLen = len * 0.52;
+            const loops = 4;
+            const loopW = coilLen / loops;
+
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(leadLen, 0);
+            for (let i = 0; i < loops; i++) {
+                const lx = leadLen + i * loopW;
+                ctx.arc(lx + loopW / 2, 0, loopW / 2, Math.PI, 0, false);
+            }
+            ctx.lineTo(len, 0);
+            ctx.stroke();
+            ctx.restore();
+
+            ctx.fillStyle = currentVal !== 0 ? getPhaseColor(currentVal) : '#0f172a';
+            ctx.font = 'italic bold 16px "Times New Roman", Times, serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label, p1.x + labelOffset.x, p1.y + labelOffset.y);
+        }
+
+        drawPhaseCoil(termA, { x: nx, y: ny }, state.ia, 'a', { x: 0, y: -14 });
+        drawPhaseCoil(termB, { x: nx, y: ny }, state.ib, 'b', { x: -12, y: 12 });
+        drawPhaseCoil(termC, { x: nx, y: ny }, state.ic, 'c', { x: 14, y: 12 });
+
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.arc(nx, ny, 3.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Y결선 전류 흐름 화살표 (코일 외곽 빈 공간을 따라 중성점 쪽으로 오목하게 배치 -> 절대 겹치지 않음)
+        const phasePts = { a: termA, b: termB, c: termC };
+        const pIn = phasePts[state.inPhase];
+        const pOut = phasePts[state.outPhase];
+
+        // 두 상 사이의 바깥쪽 빈 공간에 시작점/끝점 배치
+        const vecIn = { x: pIn.x - nx, y: pIn.y - ny };
+        const vecOut = { x: pOut.x - nx, y: pOut.y - ny };
+        const bisector = { x: (vecIn.x + vecOut.x) * 0.42, y: (vecIn.y + vecOut.y) * 0.42 };
+
+        const startPt = {
+            x: nx + vecIn.x * 0.72 + bisector.x * 0.55,
+            y: ny + vecIn.y * 0.72 + bisector.y * 0.55
+        };
+        const endPt = {
+            x: nx + vecOut.x * 0.72 + bisector.x * 0.55,
+            y: ny + vecOut.y * 0.72 + bisector.y * 0.55
+        };
+        // 제어점을 중성점(nx, ny) 방향으로 당겨 오목한 호 생성
+        const ctrlPt = {
+            x: nx + bisector.x * 0.85,
+            y: ny + bisector.y * 0.85
+        };
+
+        ctx.save();
+        ctx.strokeStyle = '#0284c7';
+        ctx.fillStyle = '#0284c7';
+        ctx.lineWidth = 2.0;
+        ctx.setLineDash([5, 3]);
+        ctx.beginPath();
+        ctx.moveTo(startPt.x, startPt.y);
+        ctx.quadraticCurveTo(ctrlPt.x, ctrlPt.y, endPt.x, endPt.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const tangAngle = Math.atan2(endPt.y - ctrlPt.y, endPt.x - ctrlPt.x);
+        drawArrowHead(ctx, endPt.x, endPt.y, tangAngle, 6.5);
+        ctx.restore();
+
+        // Y결선 하단 전류 수식 표기
+        const eqY = 362;
+        const w1 = drawMathSubscript(ctx, 'i', state.inPhase, 372, eqY, { fontSize: 16, color: '#ef4444' });
+        ctx.fillStyle = '#0f172a';
+        ctx.font = 'italic bold 16px "Times New Roman", Times, serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(' = +I,  ', 372 + w1, eqY);
+        const offset2 = 372 + w1 + ctx.measureText(' = +I,  ').width;
+        const w2 = drawMathSubscript(ctx, 'i', state.outPhase, offset2, eqY, { fontSize: 16, color: '#3b82f6' });
+        ctx.fillText(' = -I', offset2 + w2, eqY);
+
+        ctx.restore();
+    }
+
+    function drawMotorCrossSection(ctx, state) {
+        const cx = MOTOR_CX;
+        const cy = MOTOR_CY;
+        const yokeOuterR = 138;
+        const yokeInnerR = 114;
+        const shoeOuterR = 86;
+        const shoeInnerR = 72;
+        const rotorR = 52;
+
+        ctx.save();
+
+        // 1. 우측 상단 회전자 각도 θ 표시
+        ctx.fillStyle = '#0f172a';
+        ctx.font = 'italic bold 18px "Times New Roman", Times, Georgia, serif';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`θ = ${Math.round(state.angle)}°`, TOP_W - 18, 28);
+
+        // 2. 고정자 외곽 백요크 (Ring)
+        ctx.fillStyle = '#e2e8f0';
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        ctx.arc(cx, cy, yokeOuterR, 0, Math.PI * 2);
+        ctx.arc(cx, cy, yokeInnerR, 0, Math.PI * 2, true);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // 3. 3상 고정자 치(Teeth) + 권선 감김(⊙/⊗) + 회전자와 맞닿는 치 끝단(Pole Shoe) N/S 극성
+        // a상: 상단(-90°), b상: 좌하단(150°), c상: 우하단(30°)
+        const poles = [
+            { phase: 'a', centerDeg: -90, cur: state.ia, labelPos: { x: cx, y: cy - yokeOuterR - 14 } },
+            { phase: 'b', centerDeg: 150, cur: state.ib, labelPos: { x: cx - yokeOuterR * 0.96, y: cy + yokeOuterR * 0.64 } },
+            { phase: 'c', centerDeg: 30,  cur: state.ic, labelPos: { x: cx + yokeOuterR * 0.96, y: cy + yokeOuterR * 0.64 } }
+        ];
+
+        poles.forEach((p) => {
+            const cRad = p.centerDeg * (Math.PI / 180);
+
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(cRad);
+
+            // (1) 고정자 치 기둥 (Tooth Neck) - 중성 철심 회색
+            ctx.fillStyle = '#cbd5e1';
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.rect(shoeOuterR - 2, -13, yokeInnerR - shoeOuterR + 4, 26);
+            ctx.fill();
+            ctx.stroke();
+
+            // (2) 치 기둥에 감긴 집중권 권선 (주황/구리색 코일 턴 표시)
+            ctx.strokeStyle = p.cur !== 0 ? (p.cur > 0 ? '#ef4444' : '#3b82f6') : '#b45309';
+            ctx.lineWidth = 2.4;
+            for (let rx = shoeOuterR + 4; rx <= yokeInnerR - 4; rx += 6) {
+                ctx.beginPath();
+                ctx.moveTo(rx, -16);
+                ctx.lineTo(rx, 16);
+                ctx.stroke();
+            }
+
+            // (3) 슬롯 내부 전류 방향 기호 (치 양옆 슬롯 공간에 ⊙ / ⊗ 원형 도체)
+            const slotR = (yokeInnerR + shoeOuterR) / 2;
+            const slotYs = [-24, 24];
+            slotYs.forEach((sy, idx) => {
+                ctx.fillStyle = '#ffffff';
+                ctx.strokeStyle = p.cur !== 0 ? (p.cur > 0 ? '#ef4444' : '#3b82f6') : '#334155';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(slotR, sy, 7.5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                if (p.cur !== 0) {
+                    const isDot = (p.cur > 0 && idx === 0) || (p.cur < 0 && idx === 1);
+                    ctx.fillStyle = p.cur > 0 ? '#ef4444' : '#3b82f6';
+                    ctx.strokeStyle = p.cur > 0 ? '#ef4444' : '#3b82f6';
+                    ctx.lineWidth = 1.6;
+                    if (isDot) {
+                        ctx.beginPath();
+                        ctx.arc(slotR, sy, 2.5, 0, Math.PI * 2);
+                        ctx.fill();
+                    } else {
+                        ctx.beginPath();
+                        ctx.moveTo(slotR - 3.6, sy - 3.6);
+                        ctx.lineTo(slotR + 3.6, sy + 3.6);
+                        ctx.moveTo(slotR + 3.6, sy - 3.6);
+                        ctx.lineTo(slotR - 3.6, sy + 3.6);
+                        ctx.stroke();
+                    }
+                }
+            });
+
+            // (4) 회전자와 맞닿는 치 끝단(Pole Shoe)만 N/S 극성 색채화 및 문자 표시
+            // +I 유입 시 S극(파란색)이 되어 회전자 N극을 당기고, -I 유출 시 N극(빨간색)이 되어 밀어냄
+            const shoeSpan = 26 * (Math.PI / 180);
+            let shoeFill = '#cbd5e1';
+            let shoeText = '';
+            if (p.cur > 0) {
+                shoeFill = '#3b82f6'; // S극 (파란색)
+                shoeText = 'S';
+            } else if (p.cur < 0) {
+                shoeFill = '#ef4444'; // N극 (빨간색)
+                shoeText = 'N';
+            }
+
+            ctx.fillStyle = shoeFill;
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.arc(0, 0, shoeOuterR, -shoeSpan, shoeSpan);
+            ctx.arc(0, 0, shoeInnerR, shoeSpan, -shoeSpan, true);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            if (shoeText) {
+                const midR = (shoeOuterR + shoeInnerR) / 2;
+                ctx.save();
+                ctx.translate(midR, 0);
+                ctx.rotate(-cRad);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(shoeText, 0, 0);
+                ctx.restore();
+            }
+
+            ctx.restore();
+
+            // 상 라벨 (a, b, c)
+            ctx.fillStyle = p.cur !== 0 ? (p.cur > 0 ? '#ef4444' : '#3b82f6') : '#0f172a';
+            ctx.font = 'italic bold 17px "Times New Roman", Times, Georgia, serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(p.phase, p.labelPos.x, p.labelPos.y);
+        });
+
+        // 4. 홀센서 3개 (H1: 주황색, H2: 파란색, H3: 녹색 - 아래 파형 차트 색상과 일치 + 고정자 바깥 흰 공간에 120° 방사형 대칭으로 H/L 표기)
+        const sensors = [
+            { id: 'H1', mathDeg: 30,  val: state.h1, activeFill: '#ea580c', dimFill: '#fed7aa', stroke: '#9a3412', outDeg: 30 },
+            { id: 'H2', mathDeg: 150, val: state.h2, activeFill: '#0284c7', dimFill: '#bae6fd', stroke: '#075985', outDeg: 150 },
+            { id: 'H3', mathDeg: 270, val: state.h3, activeFill: '#16a34a', dimFill: '#bbf7d0', stroke: '#166534', outDeg: 270 }
+        ];
+
+        sensors.forEach((s) => {
+            const rad = s.mathDeg * (Math.PI / 180);
+            const sx = cx + 96 * Math.cos(rad);
+            const sy = cy - 96 * Math.sin(rad);
+
+            // 고정자 바깥 흰 공간 좌표 (외경 138 바깥쪽 158 반지름)
+            const outRad = s.outDeg * (Math.PI / 180);
+            const tx = cx + 158 * Math.cos(outRad);
+            const ty = cy - 158 * Math.sin(outRad);
+
+            ctx.save();
+
+            // 센서와 외곽 라벨을 잇는 얇은 지시선
+            ctx.strokeStyle = s.val === 1 ? s.activeFill : '#cbd5e1';
+            ctx.lineWidth = 1.2;
+            ctx.setLineDash([2, 2]);
+            ctx.beginPath();
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(tx, ty);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 홀센서 원형 본체
+            ctx.fillStyle = s.val === 1 ? s.activeFill : s.dimFill;
+            ctx.strokeStyle = s.stroke;
+            ctx.lineWidth = s.val === 1 ? 2.0 : 1.3;
+
+            if (s.val === 1) {
+                ctx.shadowColor = s.activeFill;
+                ctx.shadowBlur = 8;
+            }
+
+            ctx.beginPath();
+            ctx.arc(sx, sy, 10.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // 센서 내부 이름 (H1, H2, H3)
+            ctx.fillStyle = s.val === 1 ? '#ffffff' : '#1e293b';
+            ctx.font = 'bold 9.5px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(s.id, sx, sy);
+
+            // 고정자 바깥 흰 공간에 실시간 출력 상태 표기: H(1) / L(0)
+            const stateStr = s.val === 1 ? 'H(1)' : 'L(0)';
+            ctx.fillStyle = s.val === 1 ? s.activeFill : '#64748b';
+            ctx.font = s.val === 1 ? 'bold 12px monospace' : '600 11.5px monospace';
+            if (s.id === 'H1') {
+                ctx.textAlign = 'left';
+                ctx.fillText(stateStr, tx + 4, ty);
+            } else if (s.id === 'H2') {
+                ctx.textAlign = 'right';
+                ctx.fillText(stateStr, tx - 4, ty);
+            } else {
+                ctx.textAlign = 'center';
+                ctx.fillText(stateStr, tx, ty + 8);
+            }
+            ctx.restore();
+        });
+
+        // 5. 영구자석 회전자 (θ = 0°일 때 N극 아래, S극 위)
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(-state.angle * (Math.PI / 180));
+
+        // N극 (빨간색, 아래 반원)
+        ctx.fillStyle = '#ef4444';
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.arc(0, 0, rotorR, 0, Math.PI);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // S극 (파란색, 위 반원)
+        ctx.fillStyle = '#3b82f6';
+        ctx.beginPath();
+        ctx.arc(0, 0, rotorR, Math.PI, Math.PI * 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // N / S 텍스트 (항상 정립 유지)
+        const rotRad = -state.angle * (Math.PI / 180);
+        ctx.save();
+        ctx.translate(0, rotorR * 0.56);
+        ctx.rotate(-rotRad);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 15px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('N', 0, 0);
+        ctx.restore();
+
+        ctx.save();
+        ctx.translate(0, -rotorR * 0.56);
+        ctx.rotate(-rotRad);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 15px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('S', 0, 0);
+        ctx.restore();
+
+        // 중심 샤프트
+        ctx.fillStyle = '#cbd5e1';
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(0, 0, 11, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.restore();
+        ctx.restore();
+    }
+
+    // =========================================================================
+    // 3. 우측 캔버스 렌더링: H1, H2, H3 구형파 타이밍 차트 & 3비트 코드 (16:9 비율)
+    // =========================================================================
+    const CHART_LEFT = 46;
+    const CHART_RIGHT = WAVE_W - 34;
+    const CHART_W = CHART_RIGHT - CHART_LEFT;
+
+    function drawWaveCanvas(state) {
+        waveCtx.clearRect(0, 0, WAVE_W, WAVE_H);
+
+        const tracks = [
+            {
+                title: 'H1',
+                color: '#ea580c',
+                baseY: 88,
+                highY: 32,
+                evalFn: (a) => (a >= 30 && a < 210) ? 1 : 0
+            },
+            {
+                title: 'H2',
+                color: '#0284c7',
+                baseY: 196,
+                highY: 140,
+                evalFn: (a) => (a >= 150 && a < 330) ? 1 : 0
+            },
+            {
+                title: 'H3',
+                color: '#16a34a',
+                baseY: 304,
+                highY: 248,
+                evalFn: (a) => (a < 90 || a >= 270) ? 1 : 0
+            }
+        ];
+
+        // 1. 수직 그리드선
+        for (let deg = 0; deg <= 360; deg += 30) {
+            const x = CHART_LEFT + (deg / 360) * CHART_W;
+            waveCtx.strokeStyle = (deg % 60 === 30) ? '#cbd5e1' : '#e2e8f0';
+            waveCtx.lineWidth = 1;
+            waveCtx.beginPath();
+            waveCtx.moveTo(x, 20);
+            waveCtx.lineTo(x, 316);
+            waveCtx.stroke();
+        }
+
+        // 2. 각 홀센서 트랙 그리기
+        tracks.forEach((tr) => {
+            waveCtx.strokeStyle = '#0f172a';
+            waveCtx.fillStyle = '#0f172a';
+            waveCtx.lineWidth = 1.6;
+
+            // Y축
+            waveCtx.beginPath();
+            waveCtx.moveTo(CHART_LEFT, tr.baseY);
+            waveCtx.lineTo(CHART_LEFT, tr.highY - 12);
+            waveCtx.stroke();
+            drawArrowHead(waveCtx, CHART_LEFT, tr.highY - 14, -Math.PI / 2);
+
+            // X축
+            waveCtx.beginPath();
+            waveCtx.moveTo(CHART_LEFT, tr.baseY);
+            waveCtx.lineTo(CHART_RIGHT + 14, tr.baseY);
+            waveCtx.stroke();
+            drawArrowHead(waveCtx, CHART_RIGHT + 16, tr.baseY, 0);
+
+            // 30° 간격 눈금 및 각도 라벨
+            waveCtx.font = '12px sans-serif';
+            waveCtx.textAlign = 'center';
+            for (let deg = 0; deg <= 360; deg += 30) {
+                const x = CHART_LEFT + (deg / 360) * CHART_W;
+                waveCtx.beginPath();
+                waveCtx.moveTo(x, tr.baseY - 3.5);
+                waveCtx.lineTo(x, tr.baseY + 3.5);
+                waveCtx.stroke();
+
+                waveCtx.fillStyle = '#334155';
+                waveCtx.fillText(`${deg}°`, x, tr.baseY + 17);
+            }
+
+            // 구형파 그리기
+            waveCtx.strokeStyle = tr.color;
+            waveCtx.lineWidth = 3.0;
+            waveCtx.beginPath();
+            for (let d = 0; d <= 360; d++) {
+                const x = CHART_LEFT + (d / 360) * CHART_W;
+                const val = tr.evalFn(d);
+                const y = val === 1 ? tr.highY : tr.baseY;
+                if (d === 0) {
+                    waveCtx.moveTo(x, y);
+                } else {
+                    const prevVal = tr.evalFn(d - 1);
+                    if (prevVal !== val) {
+                        waveCtx.lineTo(x, prevVal === 1 ? tr.highY : tr.baseY);
+                    }
+                    waveCtx.lineTo(x, y);
+                }
+            }
+            waveCtx.stroke();
+
+            // 트랙 상단 제목 (H1, H2, H3)
+            waveCtx.fillStyle = '#0f172a';
+            waveCtx.font = 'bold 15px sans-serif';
+            waveCtx.textAlign = 'center';
+            if (tr.title === 'H1') waveCtx.fillText(tr.title, CHART_LEFT + (120 / 360) * CHART_W, tr.highY - 8);
+            if (tr.title === 'H2') waveCtx.fillText(tr.title, CHART_LEFT + (240 / 360) * CHART_W, tr.highY - 8);
+            if (tr.title === 'H3') waveCtx.fillText(tr.title, CHART_LEFT + (335 / 360) * CHART_W, tr.highY - 8);
+        });
+
+        // 3. '회전자 위치 (θ)' X축 제목 (3비트 홀 코드 박스 바로 위에 배치)
+        waveCtx.fillStyle = '#0f172a';
+        waveCtx.font = 'bold 14px sans-serif';
+        waveCtx.textAlign = 'center';
+        waveCtx.fillText('회전자 위치 (θ)', (CHART_LEFT + CHART_RIGHT) / 2, 344);
+
+        // 4. 하단 30° 단위 3비트 홀 코드(001, 101...) 및 10진수(1, 5...) 표기
+        const sectorCenters = [15, 45, 75, 105, 135, 165, 195, 225, 255, 285, 315, 345];
+        sectorCenters.forEach((centerDeg) => {
+            const x = CHART_LEFT + (centerDeg / 360) * CHART_W;
+            const sInfo = getHallAndStepState(centerDeg);
+            const isCurrentSector = Math.floor(state.angle / 30) === Math.floor(centerDeg / 30);
+
+            if (isCurrentSector) {
+                waveCtx.fillStyle = '#fef08a';
+                waveCtx.strokeStyle = '#eab308';
+                waveCtx.lineWidth = 1.4;
+                waveCtx.beginPath();
+                waveCtx.roundRect(x - 20, 356, 40, 44, 6);
+                waveCtx.fill();
+                waveCtx.stroke();
+            }
+
+            waveCtx.fillStyle = isCurrentSector ? '#0f172a' : '#475569';
+            waveCtx.font = isCurrentSector ? 'bold 13px monospace' : '12px monospace';
+            waveCtx.textAlign = 'center';
+            waveCtx.fillText(sInfo.binStr, x, 374);
+            waveCtx.fillText(sInfo.decVal.toString(), x, 393);
+        });
+
+        // 5. 현재 회전자 위치 수직 커서 라인 및 포인트 마커
+        const curX = CHART_LEFT + (state.angle / 360) * CHART_W;
+        waveCtx.save();
+        waveCtx.strokeStyle = '#ef4444';
+        waveCtx.lineWidth = 2;
+        waveCtx.setLineDash([4, 3]);
+        waveCtx.beginPath();
+        waveCtx.moveTo(curX, 18);
+        waveCtx.lineTo(curX, 326);
+        waveCtx.stroke();
+        waveCtx.setLineDash([]);
+
+        tracks.forEach((tr) => {
+            const val = tr.evalFn(state.angle);
+            const py = val === 1 ? tr.highY : tr.baseY;
+            waveCtx.fillStyle = tr.color;
+            waveCtx.strokeStyle = '#ffffff';
+            waveCtx.lineWidth = 2;
+            waveCtx.beginPath();
+            waveCtx.arc(curX, py, 5.5, 0, Math.PI * 2);
+            waveCtx.fill();
+            waveCtx.stroke();
+        });
+        waveCtx.restore();
+    }
+
+    // =========================================================================
+    // 4. UI 업데이트 및 사용자 인터랙션 (슬라이더, 마우스 드래그, 파형 클릭)
+    // =========================================================================
+    function updateAll() {
+        const state = getHallAndStepState(rotorAngle);
+
+        // 상단 배지 갱신 (HTML <sub> 태그로 정식 아랫첨자 표시)
+        document.getElementById('badgeAngle').textContent = `${Math.round(state.angle)}°`;
+        document.getElementById('badgeHallBin').textContent = `${state.binStr} (${state.decVal})`;
+        document.getElementById('badgeSwitch').innerHTML = `${state.highSw}, ${state.lowSw} (<i>i</i><sub>${state.inPhase}</sub>=+<i>I</i>, <i>i</i><sub>${state.outPhase}</sub>=-<i>I</i>)`;
+
+        // 슬라이더 동기화
+        document.getElementById('angleSlider').value = Math.round(state.angle);
+        document.getElementById('sliderAngleVal').textContent = `${Math.round(state.angle)}°`;
+
+        drawTopCanvas(state);
+        drawWaveCanvas(state);
+    }
+
+    function animate() {
+        if (isPlaying) {
+            rotorAngle = (rotorAngle + speed) % 360;
+        }
+        updateAll();
+        requestAnimationFrame(animate);
+    }
+
+    function togglePlay() {
+        isPlaying = !isPlaying;
+        document.getElementById('playIcon').textContent = isPlaying ? '⏸' : '▶';
+        document.getElementById('playText').textContent = isPlaying ? '일시정지' : '자동 회전 시작';
+    }
+
+    function stepAngle(delta) {
+        isPlaying = false;
+        document.getElementById('playIcon').textContent = '▶';
+        document.getElementById('playText').textContent = '자동 회전 시작';
+        rotorAngle = (((rotorAngle + delta) % 360) + 360) % 360;
+        updateAll();
+    }
+
+    function onSliderInput(val) {
+        isPlaying = false;
+        document.getElementById('playIcon').textContent = '▶';
+        document.getElementById('playText').textContent = '자동 회전 시작';
+        rotorAngle = parseFloat(val);
+        updateAll();
+    }
+
+    function updateSpeed(val) {
+        speed = parseFloat(val) * 0.16;
+    }
+
+    // 우측 파형 캔버스 클릭 시 해당 각도로 점프
+    waveCanvas.addEventListener('click', (e) => {
+        const rect = waveCanvas.getBoundingClientRect();
+        const scaleX = WAVE_W / rect.width;
+        const clickX = (e.clientX - rect.left) * scaleX;
+
+        if (clickX >= CHART_LEFT && clickX <= CHART_RIGHT) {
+            isPlaying = false;
+            document.getElementById('playIcon').textContent = '▶';
+            document.getElementById('playText').textContent = '자동 회전 시작';
+            const ratio = (clickX - CHART_LEFT) / CHART_W;
+            rotorAngle = Math.round(ratio * 360);
+            updateAll();
+        }
+    });
+
+    // 좌측 모터 단면도 마우스/터치 드래그로 회전자 각도 직접 회전
+    let isDraggingMotor = false;
+
+    function handleMotorDrag(clientX, clientY) {
+        const rect = topCanvas.getBoundingClientRect();
+        const scaleX = TOP_W / rect.width;
+        const scaleY = TOP_H / rect.height;
+        const x = (clientX - rect.left) * scaleX;
+        const y = (clientY - rect.top) * scaleY;
+
+        const cx = MOTOR_CX, cy = MOTOR_CY;
+        const dx = x - cx;
+        const dy = -(y - cy); // 반시계 방향 양수 각도
+        // N극 중심이 -90°(아래)일 때 θ = 0°가 되도록 +90° 오프셋 적용
+        let deg = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+        deg = ((deg % 360) + 360) % 360;
+        rotorAngle = deg;
+        updateAll();
+    }
+
+    topCanvas.addEventListener('mousedown', (e) => {
+        const rect = topCanvas.getBoundingClientRect();
+        const x = (e.clientX - rect.left) * (TOP_W / rect.width);
+        if (x > 560) {
+            isDraggingMotor = true;
+            isPlaying = false;
+            document.getElementById('playIcon').textContent = '▶';
+            document.getElementById('playText').textContent = '자동 회전 시작';
+            handleMotorDrag(e.clientX, e.clientY);
+        }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (isDraggingMotor) {
+            handleMotorDrag(e.clientX, e.clientY);
+        }
+    });
+
+    window.addEventListener('mouseup', () => {
+        isDraggingMotor = false;
+    });
+
+    // 초기 실행
+    window.onload = () => {
+        animate();
+    };
+</script>
+</body>
+</html>
